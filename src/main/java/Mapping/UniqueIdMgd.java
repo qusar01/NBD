@@ -13,4 +13,7 @@ public class UniqueIdMgd {
     public UUID getUUID() {
         return id;
     }
+    public String toHexString() {
+        return id.toString().replaceAll("-", "");
+    }
 }

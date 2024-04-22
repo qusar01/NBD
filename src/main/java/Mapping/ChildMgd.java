@@ -5,6 +5,8 @@ import lombok.Setter;
 import org.bson.codecs.pojo.annotations.BsonCreator;
 import org.bson.codecs.pojo.annotations.BsonProperty;
 
+import java.util.Objects;
+
 @Getter
 @Setter
 public class ChildMgd extends AbstractEntityMgd {
@@ -34,5 +36,20 @@ public class ChildMgd extends AbstractEntityMgd {
         this.age = age;
         this.gender = gender;
         this.parent = parent;
+    }
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        ChildMgd childMgd = (ChildMgd) o;
+        return getAge() == childMgd.getAge() &&
+                Objects.equals(getName(), childMgd.getName()) &&
+                Objects.equals(getGender(), childMgd.getGender()) &&
+                Objects.equals(getParent(), childMgd.getParent());
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(getName(), getAge(), getGender(), getParent());
     }
 }
