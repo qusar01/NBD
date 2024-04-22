@@ -1,36 +1,53 @@
 package Repositories;
 
-import Source.Parent;
-import jakarta.persistence.EntityManager;
-import jakarta.persistence.Query;
+import Mapping.ParentMgd;
+import com.mongodb.ReadConcern;
+import com.mongodb.TransactionOptions;
+import com.mongodb.WriteConcern;
+import com.mongodb.client.ClientSession;
+import com.mongodb.client.MongoCollection;
+import com.mongodb.client.model.Filters;
+import com.mongodb.client.model.Updates;
+import org.bson.conversions.Bson;
 
-import java.util.List;
-
-public class ParentRepository implements pRepository<Parent>{
-
-    private final EntityManager entityManager;
-
-    public ParentRepository(EntityManager entityManager) {
-        this.entityManager = entityManager;
+public class ParentRepository extends Repository<ParentMgd> {
+    public ParentRepository() {
+        super("parents", ParentMgd.class);
     }
 
-    @Override
-    public Parent save(Parent parent) {
-        entityManager.getTransaction().begin();
-        if(parent.getId() == null) entityManager.persist(parent);
-        else parent = entityManager.merge(parent);
-        entityManager.getTransaction().commit();
-        return parent;
+    public ParentMgd findByName(String name) {
+        MongoCollection<ParentMgd> collection = mongoBabysitterDB.getCollection(collectionName, ParentMgd.class);
+        Bson filter = Filters.eq("lastName", name);
+        return collection.find().filter(filter).first();
     }
 
-    @Override
-    public Parent findById(Long id) {
-        return entityManager.find(Parent.class, id);
+    public void update(ParentMgd parent) {
+        ClientSession clientSession = mongoClient.startSession();
+        try {
+            clientSession.startTransaction(TransactionOptions.builder()
+                    .readConcern(ReadConcern.SNAPSHOT)
+                    .writeConcern(WriteConcern.MAJORITY)
+                    .build());
+            MongoCollection<ParentMgd> parentsCollection = mongoBabysitterDB.getCollection(collectionName, ParentMgd.class);
+            Bson filter = Filters.eq("_id", parent.getEntityId());
+
+            Bson setUpdate = Updates.combine(
+                    Updates.set("firstName", parent.getFirstName()),
+                    Updates.set("lastName", parent.getLastName()),
+                    Updates.set("children", parent.getChildren())
+            );
+
+            parentsCollection.updateOne(clientSession, filter, setUpdate);
+            clientSession.commitTransaction();
+        } catch (Exception e) {
+            clientSession.abortTransaction();
+        } finally {
+            clientSession.close();
+        }
     }
 
-    @Override
-    public List<Parent> findAll() {
-        Query query = entityManager.createQuery("SELECT p FROM Parent p");
-        return query.getResultList();
+    public void clearDatabase() {
+        MongoCollection<ParentMgd> collection = mongoBabysitterDB.getCollection(collectionName, ParentMgd.class);
+        collection.drop();
     }
 }

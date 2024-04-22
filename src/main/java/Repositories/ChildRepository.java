@@ -1,36 +1,54 @@
 package Repositories;
 
-import Source.Child;
-import jakarta.persistence.EntityManager;
-import jakarta.persistence.Query;
+import Mapping.ChildMgd;
+import com.mongodb.ReadConcern;
+import com.mongodb.TransactionOptions;
+import com.mongodb.WriteConcern;
+import com.mongodb.client.ClientSession;
+import com.mongodb.client.MongoCollection;
+import com.mongodb.client.model.Filters;
+import com.mongodb.client.model.Updates;
+import org.bson.conversions.Bson;
 
-import java.util.List;
-
-public class ChildRepository implements cRepository<Child> {
-
-    private final EntityManager entityManager;
-
-    public ChildRepository(EntityManager entityManager) {
-        this.entityManager = entityManager;
+public class ChildRepository extends Repository<ChildMgd> {
+    public ChildRepository() {
+        super("children", ChildMgd.class);
     }
 
-    @Override
-    public Child save(Child child) {
-        entityManager.getTransaction().begin();
-        if(child.getId() == null) entityManager.persist(child);
-        else child = entityManager.merge(child);
-        entityManager.getTransaction().commit();
-        return child;
+    public ChildMgd findByName(String name) {
+        MongoCollection<ChildMgd> collection = mongoBabysitterDB.getCollection(collectionName, ChildMgd.class);
+        Bson filter = Filters.eq("name", name);
+        return collection.find().filter(filter).first();
     }
 
-    @Override
-    public Child findById(Long id) {
-        return entityManager.find(Child.class, id);
+    public void update(ChildMgd child) {
+        ClientSession clientSession = mongoClient.startSession();
+        try {
+            clientSession.startTransaction(TransactionOptions.builder()
+                    .readConcern(ReadConcern.SNAPSHOT)
+                    .writeConcern(WriteConcern.MAJORITY)
+                    .build());
+            MongoCollection<ChildMgd> childrenCollection = mongoBabysitterDB.getCollection(collectionName, ChildMgd.class);
+            Bson filter = Filters.eq("_id", child.getEntityId());
+
+            Bson setUpdate = Updates.combine(
+                    Updates.set("name", child.getName()),
+                    Updates.set("age", child.getAge()),
+                    Updates.set("gender", child.getGender()),
+                    Updates.set("parent", child.getParent())
+            );
+
+            childrenCollection.updateOne(clientSession, filter, setUpdate);
+            clientSession.commitTransaction();
+        } catch (Exception e) {
+            clientSession.abortTransaction();
+        } finally {
+            clientSession.close();
+        }
     }
 
-    @Override
-    public List<Child> findAll() {
-        Query query = entityManager.createQuery("SELECT c FROM Child c");
-        return query.getResultList();
+    public void clearDatabase() {
+        MongoCollection<ChildMgd> collection = mongoBabysitterDB.getCollection(collectionName, ChildMgd.class);
+        collection.drop();
     }
 }

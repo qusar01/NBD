@@ -1,60 +1,54 @@
 package Repositories;
 
-import Source.Babysitter;
-import Source.BabysitterType;
-import jakarta.persistence.EntityManager;
-import jakarta.persistence.Query;
+import Mapping.BabysitterMgd;
+import com.mongodb.ReadConcern;
+import com.mongodb.TransactionOptions;
+import com.mongodb.WriteConcern;
+import com.mongodb.client.ClientSession;
+import com.mongodb.client.MongoCollection;
+import com.mongodb.client.model.Filters;
+import com.mongodb.client.model.Updates;
+import org.bson.conversions.Bson;
 
-import java.util.List;
-
-public class BabysitterRepository implements bRepository<Babysitter> {
-
-    private final EntityManager entityManager;
-
-    public BabysitterRepository(EntityManager entityManager) {
-        this.entityManager = entityManager;
+public class BabysitterRepository extends Repository<BabysitterMgd> {
+    public BabysitterRepository() {
+        super("babysitters", BabysitterMgd.class);
     }
 
-    @Override
-    public Babysitter save(Babysitter babysitter) {
-        entityManager.getTransaction().begin();
-        if(babysitter.getId() == null) entityManager.persist(babysitter);
-        else babysitter = entityManager.merge(babysitter);
-        entityManager.getTransaction().commit();
-        return babysitter;
+    public BabysitterMgd findByName(String name) {
+        MongoCollection<BabysitterMgd> collection = mongoBabysitterDB.getCollection(collectionName, BabysitterMgd.class);
+        Bson filter = Filters.eq("name", name);
+        return collection.find().filter(filter).first();
     }
 
-    @Override
-    public Babysitter hire(Long id) {
-        Babysitter babysitter = entityManager.find(Babysitter.class, id);
-        if(babysitter != null) {
-            babysitter.setHired(true);
-            entityManager.merge(babysitter);
-        } else {
+    public void update(BabysitterMgd babysitter) {
+        ClientSession clientSession = mongoClient.startSession();
+        try {
+            clientSession.startTransaction(TransactionOptions.builder()
+                    .readConcern(ReadConcern.SNAPSHOT)
+                    .writeConcern(WriteConcern.MAJORITY)
+                    .build());
+            MongoCollection<BabysitterMgd> babysittersCollection = mongoBabysitterDB.getCollection(collectionName, BabysitterMgd.class);
+            Bson filter = Filters.eq("_id", babysitter.getEntityId());
+
+            Bson setUpdate = Updates.combine(
+                    Updates.set("name", babysitter.getName()),
+                    Updates.set("basePrice", babysitter.getBasePrice()),
+                    Updates.set("isHired", babysitter.getIsHired()),
+                    Updates.set("type", babysitter.getType())
+            );
+
+            babysittersCollection.updateOne(clientSession, filter, setUpdate);
+            clientSession.commitTransaction();
+        } catch (Exception e) {
+            clientSession.abortTransaction();
+        } finally {
+            clientSession.close();
         }
-        return babysitter;
     }
 
-    @Override
-    public Babysitter changeType(Long id, BabysitterType babysitterType) {
-        Babysitter babysitter = entityManager.find(Babysitter.class, id);
-        if(babysitter != null) {
-            babysitter.setType(babysitterType);
-            entityManager.merge(babysitter);
-        } else {
-        }
-        return babysitter;
-
-    }
-
-    @Override
-    public Babysitter findById(Long id) {
-        return entityManager.find(Babysitter.class, id);
-    }
-
-    @Override
-    public List<Babysitter> findAll() {
-        Query query = entityManager.createQuery("SELECT b FROM Babysitter b");
-        return query.getResultList();
+    public void clearDatabase() {
+        MongoCollection<BabysitterMgd> collection = mongoBabysitterDB.getCollection(collectionName, BabysitterMgd.class);
+        collection.drop();
     }
 }
